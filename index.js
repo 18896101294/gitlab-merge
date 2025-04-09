@@ -43,6 +43,13 @@ app.post('/webhook/gitlab', async (req, res) => {
         await handleMergeRequestCreated(eventData);
       }
     }
+    // 处理流水线事件
+    else if (eventType === 'Pipeline Hook') {
+      // 只处理已完成的流水线
+      if (eventData.object_attributes && ['success', 'failed'].includes(eventData.object_attributes.status)) {
+        await handlePipelineCompleted(eventData);
+      }
+    }
 
     res.status(200).send('Webhook received successfully');
   } catch (error) {
@@ -174,6 +181,71 @@ async function sendFeishuNotification(message) {
   } catch (error) {
     console.error('Error sending Feishu notification:', error);
     throw error;
+  }
+}
+
+/**
+ * 处理流水线完成事件
+ * @param {Object} data - GitLab webhook 数据
+ */
+async function handlePipelineCompleted(data) {
+  try {
+    const pipeline = data.object_attributes;
+    const project = data.project;
+    const user = data.user;
+
+    // 获取创建者的飞书用户ID
+    const userId = await getFeishuUserId(user.name);
+
+    // 构建状态显示
+    const statusDisplay = pipeline.status === 'success' ? '成功 ✅' : '失败 ❌';
+    const statusColor = pipeline.status === 'success' ? 'green' : 'red';
+
+    // 构建飞书消息
+    const message = {
+      msg_type: 'interactive',
+      card: {
+        header: {
+          title: {
+            tag: 'plain_text',
+            content: `${project.name} - 流水线 #${pipeline.id} ${statusDisplay}`
+          },
+          template: statusColor
+        },
+        elements: [
+          {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: `**项目**: ${project.name}\n**分支**: ${pipeline.ref}\n**状态**: ${statusDisplay}\n**触发者**: ${userId ? `<at id="${userId}">${user.name}</at>` : user.name}\n**持续时间**: ${Math.floor((new Date(pipeline.finished_at) - new Date(pipeline.created_at)) / 1000)} 秒`
+            }
+          },
+          {
+            tag: 'hr'
+          },
+          {
+            tag: 'action',
+            actions: [
+              {
+                tag: 'button',
+                text: {
+                  tag: 'plain_text',
+                  content: '查看流水线详情'
+                },
+                url: `${project.web_url}/-/pipelines/${pipeline.id}`,
+                type: 'default'
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    // 发送飞书通知
+    await sendFeishuNotification(message);
+    console.log(`Pipeline notification sent to ${user.name} for pipeline #${pipeline.id}`);
+  } catch (error) {
+    console.error('Error handling pipeline completion:', error);
   }
 }
 
