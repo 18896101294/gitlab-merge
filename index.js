@@ -55,6 +55,33 @@ app.post('/webhook/gitlab', async (req, res) => {
  * 处理新创建的合并请求
  * @param {Object} data - GitLab webhook 数据
  */
+// 获取飞书用户ID
+async function getFeishuUserId(userName) {
+  try {
+    const response = await axios.get('https://gate.shjinjia.com.cn/api/SearchTool/EexcuteDataSource', {
+      params: {
+        data_source_code: 'feishu_user_tbl',
+        keyword_value: userName
+      },
+      headers: {
+        'token': 'systemh3x8bb3kol0o6efzoat5wxwv4ivbu2g1',
+        'User-Agent': 'Apifox/1.0.0 (https://apifox.com)',
+        'Accept': '*/*',
+        'Host': 'gate.shjinjia.com.cn',
+        'Connection': 'keep-alive'
+      }
+    });
+
+    if (response.data.res_status_code === '0' && response.data.res_content.length > 0) {
+      return response.data.res_content[0].strValue;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting Feishu user ID:', error);
+    return null;
+  }
+}
+
 async function handleMergeRequestCreated(data) {
   try {
     const mergeRequest = data.object_attributes;
@@ -67,6 +94,15 @@ async function handleMergeRequestCreated(data) {
       return;
     }
 
+    // 获取所有指派人的飞书用户ID
+    const assigneeIds = [];
+    for (const assignee of assignees) {
+      const userId = await getFeishuUserId(assignee.name);
+      if (userId) {
+        assigneeIds.push(userId);
+      }
+    }
+
     // 获取最后一次提交信息
     const lastCommit = mergeRequest.last_commit || {};
     const commitMessage = lastCommit.message ? lastCommit.message.split('\n')[0] : '无提交信息';
@@ -75,6 +111,7 @@ async function handleMergeRequestCreated(data) {
     const message = {
       msg_type: 'interactive',
       card: {
+        // 添加at功能
         header: {
           title: {
             tag: 'plain_text',
@@ -87,7 +124,7 @@ async function handleMergeRequestCreated(data) {
             tag: 'div',
             text: {
               tag: 'lark_md',
-              content: `**项目**: ${project.name}\n**标题**: ${mergeRequest.title}\n**创建者**: ${data.user.name}\n**指派给**: ${assignees.map(a => a.name).join(', ')}\n**源分支**: ${mergeRequest.source_branch}\n**目标分支**: ${mergeRequest.target_branch}\n**最新提交**: ${commitMessage}`
+              content: `**项目**: ${project.name}\n**标题**: ${mergeRequest.title}\n**创建者**: ${data.user.name}\n**指派给**: ${assignees.map(a => `<at id="${assigneeIds.find(id => id) || ''}">${a.name}</at>`).join(', ')}\n**源分支**: ${mergeRequest.source_branch}\n**目标分支**: ${mergeRequest.target_branch}\n**最新提交**: ${commitMessage}`
             }
           },
           {
