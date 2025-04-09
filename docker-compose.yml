@@ -9,7 +9,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       # 这些环境变量需要在实际部署时配置
-      - FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/fbbf4ff0-3a98-4a9d-8a07-0f1fc371246c
+      - FEISHU_WEBHOOK_URL=${FEISHU_WEBHOOK_URL}
       # - GITLAB_SECRET_TOKEN=${GITLAB_SECRET_TOKEN}
     restart: unless-stopped
     volumes:
